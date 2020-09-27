@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "incremental": true,
+        "target": "es6",
+        "lib": ["ES6", "DOM"],
+        "module": "commonjs",
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true
+    },
+    "include": ["src/**/*.ts"]
+}

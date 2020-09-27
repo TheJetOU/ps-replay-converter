@@ -1,0 +1,34 @@
+{
+  "name": "ps-replay-converter",
+  "version": "0.0.1",
+  "description": "Converts old Pokemon simulator logs to PS' protocol",
+  "main": "dist/index.html",
+  "scripts": {
+    "test": "jest -c config/jest.config.js test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheJetOU/ps-replay-converter.git"
+  },
+  "author": "Waleed Hassan <waleed.hassan.aidid@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/TheJetOU/ps-replay-converter/issues"
+  },
+  "homepage": "https://github.com/TheJetOU/ps-replay-converter#readme",
+  "devDependencies": {
+    "@types/jest": "^26.0.14",
+    "@typescript-eslint/eslint-plugin": "^4.2.0",
+    "@typescript-eslint/parser": "^4.2.0",
+    "eslint": "^7.9.0",
+    "eslint-config-prettier": "^6.11.0",
+    "eslint-plugin-prettier": "^3.1.4",
+    "husky": "^4.3.0",
+    "jest": "^26.4.2",
+    "lint-staged": "^10.4.0",
+    "prettier": "^2.1.2",
+    "ts-jest": "^26.4.0",
+    "typescript": "^4.0.3",
+    "webpack": "^4.44.2"
+  }
+}
