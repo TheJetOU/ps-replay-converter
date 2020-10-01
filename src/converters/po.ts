@@ -26,6 +26,7 @@ export interface Context {
     p2: Player<"2">;
     gen: number;
     turn: number;
+    started: boolean;
     lastMoveBy: Player;
 }
 
@@ -415,11 +416,12 @@ export const PO: Converter<Context> = {
                 fn: (ctx: Context) => {
                     ctx.turn = turn;
                     // TODO: investigate when to use `|upkeep`
-                    const ret = [`|`, `|turn|${turn}`];
-                    if (ctx.turn === 1) {
-                        ret.unshift(`|start`);
+                    const protocol = [`|`, `|turn|${turn}`];
+                    if (!ctx.started) {
+                        ctx.started = true;
+                        protocol.unshift("|start");
                     }
-                    return ret;
+                    return protocol;
                 },
             };
         }
@@ -441,13 +443,18 @@ export const PO: Converter<Context> = {
                     if (player.curPokemon.toxicTurns && ctx.gen > 2) {
                         player.curPokemon.toxicTurns = 1;
                     }
-                    return [
+                    const protocol = [
                         `|switch|p${player.pNum}a: ${pokemon.name}|${
                             pokemon.specie
                         }|${pokemon.hp}/100${
                             pokemon.status ? " " + pokemon.status : ""
                         }`,
                     ];
+                    if (!ctx.started) {
+                        ctx.started = true;
+                        protocol.unshift("|start");
+                    }
+                    return protocol;
                 },
             };
         }
@@ -468,6 +475,10 @@ export const PO: Converter<Context> = {
                     // Some battle don't have switch in messages
                     // and just started the battle with a move
                     if (!p1.curPokemon) {
+                        if (!ctx.started) {
+                            ctx.started = true;
+                            protocol.push("|start");
+                        }
                         p1.curPokemon = parsePokemon($2);
                         p1.pokemon[p1.curPokemon.name] = p1.curPokemon;
                         protocol.push(
