@@ -37,9 +37,14 @@ export class Log<
         const protocol = [];
         while (curLog !== null) {
             const { params, fn } = this.converter.convertLine(curLog.curLine);
-            const res = fn(
-                ...this.converter.buildParams(ctx, curLog.clone(), params)
-            );
+            let res;
+            try {
+                res = fn(
+                    ...this.converter.buildParams(ctx, curLog.clone(), params)
+                );
+            } catch (err) {
+                throw new Error(`${err.message} at line: "${curLog.curLine}"`);
+            }
             if (res) {
                 protocol.push(...res);
             }

@@ -477,7 +477,7 @@ export const PO: Converter<Context> = {
                     const protocol = [];
                     // rename later
                     const p1 = parsePlayers(ctx, $1)[0];
-                    // Some battle don't have switch in messages
+                    // Some battles don't have switch in messages
                     // and just started the battle with a move
                     if (!p1.curPokemon) {
                         if (!ctx.started) {
@@ -795,6 +795,31 @@ export const PO: Converter<Context> = {
                     if ($2 === "3") return [];
                     return [
                         `|-start|p${player.pNum}a: ${pokemon.name}|perish${$2}`,
+                    ];
+                },
+            };
+        }
+        match = line.match(/(.+'s )?(.+) was dragged out!/)?.slice(1);
+        if (match) {
+            const [$1, $2] = match;
+            return {
+                params: ["context"],
+                fn: (ctx: Context) => {
+                    const pokemon = parsePokemon($2);
+                    const [player] = parsePlayers(ctx, $1);
+                    if (!player.pokemon[pokemon.name]) {
+                        player.pokemon[pokemon.name] = pokemon;
+                    }
+                    player.curPokemon = pokemon;
+                    if (player.curPokemon.toxicTurns && ctx.gen > 2) {
+                        player.curPokemon.toxicTurns = 1;
+                    }
+                    return [
+                        `|drag|p${player.pNum}a: ${pokemon.name}|${
+                            pokemon.specie
+                        }|${pokemon.hp}/100${
+                            pokemon.status ? " " + pokemon.status : ""
+                        }`,
                     ];
                 },
             };

@@ -249,7 +249,12 @@
             battle.resumeButton = actions["resume"].bind(actions);
             $(".convert").on("click", function () {
                 var log = $("#logs").val();
-                console.log(window.convert("PO", log).split("\n").map((line) => line.trim()))
+                console.log(
+                    window
+                        .convert("PO", log)
+                        .split("\n")
+                        .map((line) => line.trim())
+                );
                 battle.setQueue(
                     window
                         .convert("PO", log)
