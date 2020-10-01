@@ -4,7 +4,7 @@ var HtmlWebpackPlugin = require("html-webpack-plugin");
 
 // copy-webpack-plugin for some reason copies the path structure too
 // like, copying `public/fx` will output `dist/public/fx` which is nonsensical
-cp.execSync("mkdir dist");
+cp.execSync("mkdir -p dist");
 cp.execSync("cp -r public/fx/ dist");
 
 module.exports = {
