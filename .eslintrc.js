@@ -20,9 +20,12 @@ module.exports = {
         },
         {
             files: ["**/**.js"],
+            env: {
+                node: true,
+            },
             parserOptions: {
                 ecmaVersion: 2020,
-                sourceType: "module",
+                sourceType: "script",
             },
             extends: ["eslint:recommended", "plugin:prettier/recommended"],
             rules: {},

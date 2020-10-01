@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Pok&eacutemon replay converter</title>
+    </head>
+    <body>
+        <h1>Pok&eacutemon Replay Converter</h1>
+        <div class="pfx-panel">
+            <div class="pfx-body" style="max-width: 1180px">
+                <div class="wrapper replay-wrapper">
+                    <div class="battle">
+                        <div class="playbutton">
+                            <button disabled="disabled">Loading...</button>
+                        </div>
+                    </div>
+                    <div class="battle-log"></div>
+                    <div class="replay-controls">
+                        <button data-action="start">
+                            <i class="fa fa-play"></i> Play
+                        </button>
+                    </div>
+                    <div class="replay-controls-2">
+                        <div class="chooser leftchooser speedchooser">
+                            <em>Speed:</em>
+                            <div>
+                                <button value="hyperfast">Hyperfast</button>
+                                <button value="fast">Fast</button
+                                ><button value="normal" class="sel">
+                                    Normal</button
+                                ><button value="slow">Slow</button
+                                ><button value="reallyslow">Really Slow</button>
+                            </div>
+                        </div>
+                        <div class="chooser colorchooser">
+                            <em>Color&nbsp;scheme:</em>
+                            <div>
+                                <button class="sel" value="light">Light</button
+                                ><button value="dark">Dark</button>
+                            </div>
+                        </div>
+                        <div class="chooser soundchooser" style="display: none">
+                            <em>Music:</em>
+                            <div>
+                                <button class="sel" value="on">On</button
+                                ><button value="off">Off</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <hr />
+                <h2>Paste logs here:</h2>
+                <textarea
+                    id="logs"
+                    style="height: 10vh; width: 100%"
+                ></textarea>
+                <label for="sim-select"
+                    >Which simulator are the logs from?:</label
+                >
+                <select name="simulator" id="sims">
+                    <option value="PO">Pok&eacutemon Online</option>
+                </select>
+                <button
+                    class="convert"
+                    style="width: 100%; margin-top: 5px; margin-bottom: 5px"
+                >
+                    Convert!
+                </button>
+            </div>
+        </div>
+        <link
+            rel="stylesheet"
+            href="https://play.pokemonshowdown.com/style/font-awesome.css?932f42c7"
+        /><link
+            rel="stylesheet"
+            href="https://pokemonshowdown.com/theme/panels.css?0.8309281775622812"
+        /><link
+            rel="stylesheet"
+            href="https://pokemonshowdown.com/theme/main.css?0.7057896533167205"
+        /><link
+            rel="stylesheet"
+            href="https://play.pokemonshowdown.com/style/battle.css?93ec63dc"
+        /><link
+            rel="stylesheet"
+            href="https://play.pokemonshowdown.com/style/replay.css?cfa51183"
+        /><link
+            rel="stylesheet"
+            href="https://play.pokemonshowdown.com/style/utilichart.css?e39c48cf"
+        />
+        <script src="https://play.pokemonshowdown.com/js/lib/jquery-1.11.0.min.js"></script>
+        <script src="https://play.pokemonshowdown.com/js/lib/jquery-cookie.js"></script>
+        <script src="https://play.pokemonshowdown.com/js/lib/html-sanitizer-minified.js"></script>
+        <script src="https://play.pokemonshowdown.com/js/battle-sound.js"></script>
+        <script src="https://play.pokemonshowdown.com/config/config.js"></script>
+        <script src="https://play.pokemonshowdown.com/js/battledata.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/pokedex-mini.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/pokedex-mini-bw.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/graphics.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/pokedex.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/items.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/moves.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/abilities.js"></script>
+        <script src="https://play.pokemonshowdown.com/data/teambuilder-tables.js"></script>
+        <script src="https://play.pokemonshowdown.com/js/battle-tooltips.js"></script>
+        <script src="https://play.pokemonshowdown.com/js/battle.js"></script>
+        <script src="js/index.js"></script>
+        <script>
+            // Most of this code was been copied from
+            // the Pokémon Showdown Client's replay file - https://github.com/smogon/pokemon-showdown-client/blob/master/replays/js/replay.js
+            // which is under the terms of the MIT licesne
+            function setupbindings() {
+                $(".chooser button").on("click", function (e) {
+                    e.preventDefault();
+                    var $chooser = $(e.currentTarget).closest(".chooser");
+                    var value = e.currentTarget.value;
+                    actions.changeSetting($chooser, value, $(e.currentTarget));
+                });
+                for (var action in actions) {
+                    if (action === "changeSetting") continue;
+                    $('[data-action="' + action + '"]').on("click", function (
+                        e
+                    ) {
+                        actions[e.currentTarget.dataset.action]();
+                    });
+                }
+            }
+            var actions = {
+                changeSetting: function (type, value, valueElem) {
+                    var $chooser;
+                    if (typeof type === "string") {
+                        $chooser = $("." + type + "chooser");
+                    } else {
+                        $chooser = type;
+                        type = "";
+                        if ($chooser.hasClass("colorchooser")) {
+                            type = "color";
+                        } else if ($chooser.hasClass("soundchooser")) {
+                            type = "sound";
+                        } else if ($chooser.hasClass("speedchooser")) {
+                            type = "speed";
+                        }
+                    }
+                    if (!valueElem)
+                        valueElem = $chooser.find(
+                            "button[value=" + value + "]"
+                        );
+
+                    $chooser.find("button").removeClass("sel");
+                    valueElem.addClass("sel");
+
+                    switch (type) {
+                        case "color":
+                            if (value === "dark") {
+                                $(document.body).addClass("dark");
+                            } else {
+                                $(document.body).removeClass("dark");
+                            }
+                            break;
+
+                        case "sound":
+                            var muteTable = {
+                                on: false, // this is kind of backwards: sound[on] === muted[false]
+                                off: true,
+                            };
+                            battle.setMute(muteTable[value]);
+                            break;
+
+                        case "speed":
+                            var fadeTable = {
+                                hyperfast: 40,
+                                fast: 50,
+                                normal: 300,
+                                slow: 500,
+                                reallyslow: 1000,
+                            };
+                            var delayTable = {
+                                hyperfast: 1,
+                                fast: 1,
+                                normal: 1,
+                                slow: 1000,
+                                reallyslow: 3000,
+                            };
+                            battle.messageShownTime = delayTable[value];
+                            battle.messageFadeTime = fadeTable[value];
+                            battle.scene.updateAcceleration();
+                            break;
+                    }
+                },
+                pause: function () {
+                    console.log("test");
+                    $(".replay-controls").html(
+                        '<button data-action="play"><i class="fa fa-play"></i> Play</button><button data-action="reset"><i class="fa fa-undo"></i> Reset</button> <button data-action="rewind"><i class="fa fa-step-backward"></i> Last turn</button><button data-action="ff"><i class="fa fa-step-forward"></i> Next turn</button> <button data-action="ffto"><i class="fa fa-fast-forward"></i> Go to turn...</button> <button data-action="switchSides"><i class="fa fa-random"></i> Switch sides</button>'
+                    );
+                    setupbindings();
+                    battle.pause();
+                },
+                play: function () {
+                    $(".battle .playbutton").remove();
+                    $(".replay-controls").html(
+                        '<button data-action="pause"><i class="fa fa-pause"></i> Pause</button><button data-action="reset"><i class="fa fa-undo"></i> Reset</button> <button data-action="rewind"><i class="fa fa-step-backward"></i> Last turn</button><button data-action="ff"><i class="fa fa-step-forward"></i> Next turn</button> <button data-action="ffto"><i class="fa fa-fast-forward"></i> Go to turn...</button> <button data-action="switchSides"><i class="fa fa-random"></i> Switch sides</button>'
+                    );
+                    setupbindings();
+                    battle.play();
+                },
+                resume: function () {
+                    this.play();
+                },
+                reset: function () {
+                    battle.reset();
+                    $(".battle").append(
+                        '<div class="playbutton"><button data-action="start"><i class="fa fa-play"></i> Play</button></div>'
+                    );
+                    // $('.battle-log').html('');
+                    $(".replay-controls").html(
+                        '<button data-action="start"><i class="fa fa-play"></i> Play</button><button data-action="reset" disabled="disabled"><i class="fa fa-undo"></i> Reset</button>'
+                    );
+                    setupbindings();
+                },
+                ff: function () {
+                    battle.skipTurn();
+                },
+                rewind: function () {
+                    if (battle.turn) {
+                        battle.fastForwardTo(battle.turn - 1);
+                    }
+                },
+                ffto: function () {
+                    var turn = prompt("Turn?");
+                    if (!turn) return;
+                    turn = parseInt(turn);
+                    battle.fastForwardTo(turn);
+                },
+                switchSides: function () {
+                    battle.switchSides();
+                },
+                start: function () {
+                    battle.play();
+                    $(".replay-controls").html(
+                        '<button data-action="pause"><i class="fa fa-pause"></i> Pause</button><button data-action="reset"><i class="fa fa-undo"></i> Reset</button> <button data-action="rewind"><i class="fa fa-step-backward"></i> Last turn</button><button data-action="ff"><i class="fa fa-step-forward"></i> Next turn</button> <button data-action="ffto"><i class="fa fa-fast-forward"></i> Go to turn...</button> <button data-action="switchSides"><i class="fa fa-random"></i> Switch sides</button>'
+                    );
+                    setupbindings();
+                },
+                startMuted: function () {
+                    this.changeSetting("sound", "off");
+                    this.start();
+                },
+            };
+            var battle = new Battle($(".battle"), $(".battle-log"));
+            battle.resumeButton = actions["resume"].bind(actions);
+            $(".convert").on("click", function () {
+                var log = $("#logs").val();
+                battle.setQueue(
+                    window
+                        .convert("PO", log)
+                        .split("\n")
+                        .map((line) => line.trim())
+                );
+                battle.reset();
+                $(".battle").append(
+                    '<div class="playbutton"><button data-action="start"><i class="fa fa-play"></i> Play</button><br /><br /><button data-action="startMuted" class="startsoundchooser" style="font-size:10pt;display:none">Play (music off)</button></div>'
+                );
+                // https://github.com/smogon/pokemon-showdown-client/blob/master/replays/js/replay.js#L154
+                setupbindings();
+                var rc2 = $(".replay-controls-2")[0];
+                if (rc2) rc2.innerHTML = rc2.innerHTML;
+
+                if (window.HTMLAudioElement)
+                    $(".soundchooser, .startsoundchooser").show();
+            });
+        </script>
+        <script src="index.js"></script>
+    </body>
+</html>

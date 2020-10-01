@@ -1,4 +1,8 @@
-import { PO, Context } from "./converters/po";
+import { PO, Context as POContext } from "./converters/po";
+
+const CONVERTERS = {
+    PO,
+};
 
 export interface Converter<
     T extends { [k: string]: any } = Record<string, any>
@@ -48,27 +52,38 @@ export class Log<
     }
 }
 
-import fs = require("fs");
+function convert<T extends keyof typeof CONVERTERS>(sim: T, logs: string) {
+    return new Log<POContext>(CONVERTERS[sim], logs.split("\n"))
+        .convert()
+        .join("\n");
+}
 
-fs.readdir("./.test-data", (err, files) => {
-    if (err) throw err;
-    for (const file of files) {
-        fs.readFile(
-            `./.test-data/${file}`,
-            { encoding: "utf8" },
-            (err, data) => {
-                if (err) throw err;
-                if (file.startsWith("psp-")) return;
-                fs.writeFile(
-                    `./.test-data/psp-${file}`,
-                    new Log<Context, typeof PO>(PO, data.split("\n"))
-                        .convert()
-                        .join("\n"),
-                    () => {
-                        console.log(`Done writing ${file}`);
-                    }
-                );
-            }
-        );
-    }
-});
+// import fs = require("fs");
+
+// fs.readdir("./.test-data", (err, files) => {
+//     if (err) throw err;
+//     for (const file of files) {
+//         fs.readFile(
+//             `./.test-data/${file}`,
+//             { encoding: "utf8" },
+//             (err, data) => {
+//                 if (err) throw err;
+//                 if (file.startsWith("psp-")) return;
+//                 fs.writeFile(
+//                     `./.test-data/psp-${file}`,
+//                     new Log<Context, typeof PO>(PO, data.split("\n"))
+//                         .convert()
+//                         .join("\n"),
+//                     () => {
+//                         console.log(`Done writing ${file}`);
+//                     }
+//                 );
+//             }
+//         );
+//     }
+// });
+if (typeof window === "object") {
+    // @ts-expect-error: TypeScript doesn't like people assinging
+    // props to `window` for some reason
+    window.convert = convert;
+}

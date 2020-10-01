@@ -4,6 +4,7 @@
   "description": "Converts old Pokemon simulator logs to PS' protocol",
   "main": "dist/index.html",
   "scripts": {
+    "compile": "webpack",
     "test": "jest -c config/jest.config.js test"
   },
   "repository": {
@@ -23,12 +24,15 @@
     "eslint": "^7.9.0",
     "eslint-config-prettier": "^6.11.0",
     "eslint-plugin-prettier": "^3.1.4",
+    "html-webpack-plugin": "^4.5.0",
     "husky": "^4.3.0",
     "jest": "^26.4.2",
     "lint-staged": "^10.4.0",
     "prettier": "^2.1.2",
     "ts-jest": "^26.4.0",
+    "ts-loader": "^8.0.4",
     "typescript": "^4.0.3",
-    "webpack": "^4.44.2"
+    "webpack": "^4.44.2",
+    "webpack-cli": "^3.3.12"
   }
 }
