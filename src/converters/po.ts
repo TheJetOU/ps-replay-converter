@@ -84,6 +84,7 @@ function parseTier(str: string) {
         GSC: 2,
         ADV: 3,
         DPP: 4,
+        HGSS: 4,
         DP: 4,
         BW: 5,
     };
@@ -158,7 +159,10 @@ function findPokemon(ctx: Context, name: string) {
         let owner: { player: Player; pokemon: Pokemon } | null = null;
         for (const possibleOwner of possibleOwners) {
             const { player, pokemon } = possibleOwner;
-            if (player.curPokemon?.name !== pokemon.name) {
+            if (
+                player.curPokemon?.name.toLowerCase() !==
+                pokemon.name.toLowerCase()
+            ) {
                 owner = { player, pokemon };
             }
         }
@@ -174,7 +178,8 @@ function findPokemon(ctx: Context, name: string) {
         pokemon: Pokemon;
     }[] = [];
     for (const pokemon of Object.values(ctx.p1.pokemon)) {
-        if (pokemon.name === name) {
+        // PO is a POS and sometimes use incorret casing
+        if (pokemon.name.toLowerCase() === name.toLowerCase()) {
             possibleOwners.push({
                 player: ctx.p1,
                 pokemon: pokemon,
@@ -182,7 +187,7 @@ function findPokemon(ctx: Context, name: string) {
         }
     }
     for (const pokemon of Object.values(ctx.p2.pokemon)) {
-        if (pokemon.name === name) {
+        if (pokemon.name.toLowerCase() === name.toLowerCase()) {
             possibleOwners.push({ player: ctx.p2, pokemon: pokemon });
         }
     }
