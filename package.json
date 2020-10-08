@@ -5,7 +5,7 @@
     "main": "dist/index.html",
     "scripts": {
         "compile": "webpack",
-        "test": "jest -c config/jest.config.js test",
+        "test": "jest -c test/jest.config.js test",
         "format": "prettier --write .",
         "lint": "eslint **/**.ts",
         "predeploy": "npm run compile",

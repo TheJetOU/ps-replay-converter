@@ -24,10 +24,10 @@ interface Player<T extends PlayerNum = PlayerNum> {
 export interface Context {
     p1: Player<"1">;
     p2: Player<"2">;
-    gen: number;
-    turn: number;
     started: boolean;
-    lastMoveBy: Player;
+    gen?: number;
+    turn?: number;
+    lastMoveBy?: Player;
 }
 
 function createPokemon(specie: string, nickname?: string): Pokemon {
@@ -257,51 +257,31 @@ const SPECIAL_MOVES: {
     },
 };
 
-export const PO: Converter<Context> = {
-    buildParams(ctx: Context, log: Log<Context, typeof PO>, params: string[]) {
-        const paramVals = [];
-        for (const param of params) {
-            switch (param) {
-                case "context":
-                    paramVals.push(ctx);
-                    break;
-                case "missed":
-                    paramVals.push(
-                        !!log
-                            .next()
-                            ?.curLine.match(/The attack of(.+'s )? missed/)
-                    );
-                    break;
-                case "failed":
-                    paramVals.push(
-                        !!log.next()?.curLine.match(/But it failed!/)
-                    );
-                    break;
-                case "nextMove":
-                    let player: Player;
-                    let pokemon: Pokemon;
-                    let nextLine = log.next();
-                    while (nextLine !== null) {
-                        const match = nextLine.curLine
-                            .match(/(.+'s )?(.+) used .+!/)
-                            ?.slice(1);
-                        if (match) {
-                            const [$1, $2] = match;
-                            player = parsePlayers(ctx, $1)[0];
-                            pokemon = parsePokemon($2);
-                            paramVals.push({ player, pokemon });
-                            break;
-                        }
-                        nextLine = nextLine.next();
-                    }
+export class POConverter extends Converter {
+    readonly ctx!: Context;
+    constructor(readonly log: Log) {
+        super(log);
+        // Assigned at the first line always
+        this.ctx = { p1: null!, p2: null!, started: false };
+    }
+    convert() {
+        const protocol: string[] = [];
+        for (const log of this.log.read()) {
+            let result;
+            try {
+                result = this.convertLine(log, log.curLine);
+            } catch (err) {
+                throw new Error(
+                    `${err.message}\n\tAt line: ${
+                        log.curLine
+                    }\n\tContext: ${JSON.stringify(this.ctx, undefined, 4)}`
+                );
             }
+            protocol.push(...result);
         }
-        return paramVals;
-    },
-    convertLine(
-        line: string
-    ): { params: string[]; fn: (...args: any[]) => string[] | void } {
-        const noop = { params: [], fn: () => undefined };
+        return protocol;
+    }
+    private convertLine(curLog: Log, line: string) {
         ///////////////////////////////////////////////////////////////////////
         // Miscellaneous Logs
         ///////////////////////////////////////////////////////////////////////
@@ -311,103 +291,58 @@ export const PO: Converter<Context> = {
             ?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    ctx.p1 = createPlayer($1, "1");
-                    ctx.p2 = createPlayer($2, "2");
-                    return [
-                        `|player|p1|${ctx.p1.name}|1`,
-                        `|player|p2|${ctx.p2.name}|2`,
-                    ];
-                },
-            };
+            this.ctx.p1 = createPlayer($1, "1");
+            this.ctx.p2 = createPlayer($2, "2");
+            return [
+                `|player|p1|${this.ctx.p1.name}|1`,
+                `|player|p2|${this.ctx.p2.name}|2`,
+            ];
         }
         match = line.match(/Mode: (.+)/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: [],
-                fn: () => {
-                    return [`|gametype|${$1.toLowerCase()}`];
-                },
-            };
+            return [`|gametype|${$1.toLowerCase()}`];
         }
         match = line.match(/Rule: (.+)/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: [],
-                fn: () => {
-                    return [`|rule|${$1}`];
-                },
-            };
+            return [`|rule|${$1}`];
         }
         match = line.match(/Tier: (.+)/)?.slice(1);
         if (match) {
             const [$1] = match;
             const { tier, gen } = parseTier($1);
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    ctx.gen = gen;
-                    return [`|gen|${gen}`, `|tier|[Gen ${gen}] ${tier}`];
-                },
-            };
+            this.ctx.gen = gen;
+            return [`|gen|${gen}`, `|tier|[Gen ${gen}] ${tier}`];
         }
         match = line.match(/(.+): (.+)/)?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    return [
-                        `|c|${
-                            [ctx.p1.name, ctx.p2.name].includes($1) ? "☆" : ""
-                        }${$1}|${$2}`,
-                    ];
-                },
-            };
+            return [
+                `|c|${
+                    [this.ctx.p1.name, this.ctx.p2.name].includes($1) ? "☆" : ""
+                }${$1}|${$2}`,
+            ];
         }
         match = line.match(/(.+) is watching the battle/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: [],
-                fn: () => {
-                    return [`|j|${$1}`];
-                },
-            };
+            return [`|j|${$1}`];
         }
         match = line.match(/(.+) stopped watching the battle/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: [],
-                fn: () => {
-                    return [`|l|${$1}`];
-                },
-            };
+            return [`|l|${$1}`];
         }
         match = line.match(/(.+) won the battle/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: [],
-                fn: () => {
-                    return [`|win|${$1}`];
-                },
-            };
+            return [`|win|${$1}`];
         }
         match = line.match(/(.+) forfeited against (.+)!/)?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: [],
-                fn: () => {
-                    return [`|-message|${$1} forfeited`, `|`, `|win|${$2}`];
-                },
-            };
+            return [`|-message|${$1} forfeited`, `|`, `|win|${$2}`];
         }
         match = line.match(/Start of turn (\d+)!?/)?.slice(1);
         if (match) {
@@ -416,19 +351,14 @@ export const PO: Converter<Context> = {
             if (isNaN(turn)) {
                 throw new Error(`Couldn't parse turn: ${JSON.stringify($1)}`);
             }
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    ctx.turn = turn;
-                    // TODO: investigate when to use `|upkeep`
-                    const protocol = [`|`, `|turn|${turn}`];
-                    if (!ctx.started) {
-                        ctx.started = true;
-                        protocol.unshift("|start");
-                    }
-                    return protocol;
-                },
-            };
+            this.ctx.turn = turn;
+            // TODO: investigate when to use `|upkeep`
+            const protocol = [`|`, `|turn|${turn}`];
+            if (!this.ctx.started) {
+                this.ctx.started = true;
+                protocol.unshift("|start");
+            }
+            return protocol;
         }
         ///////////////////////////////////////////////////////////////////////
         // Battle Logs
@@ -436,468 +366,340 @@ export const PO: Converter<Context> = {
         match = line.match(/(.+) sent out (.+)/)?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const pokemon = parsePokemon($2);
-                    const [player] = parsePlayers(ctx, $1);
-                    if (!player.pokemon[pokemon.name]) {
-                        player.pokemon[pokemon.name] = pokemon;
-                    }
-                    player.curPokemon = pokemon;
-                    if (player.curPokemon.toxicTurns && ctx.gen > 2) {
-                        player.curPokemon.toxicTurns = 1;
-                    }
-                    const protocol = [
-                        `|switch|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.specie
-                        }|${pokemon.hp}/100${
-                            pokemon.status ? " " + pokemon.status : ""
-                        }`,
-                    ];
-                    if (!ctx.started) {
-                        ctx.started = true;
-                        protocol.unshift("|start");
-                    }
-                    return protocol;
-                },
-            };
+            const pokemon = parsePokemon($2);
+            const [player] = parsePlayers(this.ctx, $1);
+            if (!player.pokemon[pokemon.name]) {
+                player.pokemon[pokemon.name] = pokemon;
+            }
+            player.curPokemon = pokemon;
+            if (player.curPokemon.toxicTurns && this.ctx.gen! > 2) {
+                player.curPokemon.toxicTurns = 1;
+            }
+            const protocol = [
+                `|switch|p${player.pNum}a: ${pokemon.name}|${pokemon.specie}|${
+                    pokemon.hp
+                }/100${pokemon.status ? " " + pokemon.status : ""}`,
+            ];
+            if (!this.ctx.started) {
+                this.ctx.started = true;
+                protocol.unshift("|start");
+            }
+            return protocol;
         }
         match = line.match(/(.+'s )?(.+) used (.+)!/)?.slice(1);
         if (match) {
             const [$1, $2, $3] = match;
-            return {
-                params: ["context", "missed", "failed", "nextMove"],
-                fn: (
-                    ctx: Context,
-                    missed: boolean,
-                    failed: boolean,
-                    nextMove: { player: Player; pokemon: Pokemon }
-                ) => {
-                    const protocol = [];
-                    // rename later
-                    const p1 = parsePlayers(ctx, $1)[0];
-                    // Some battles don't have switch in messages
-                    // and just started the battle with a move
-                    if (!p1.curPokemon) {
-                        if (!ctx.started) {
-                            ctx.started = true;
-                            protocol.push("|start");
-                        }
-                        p1.curPokemon = parsePokemon($2);
-                        p1.pokemon[p1.curPokemon.name] = p1.curPokemon;
-                        protocol.push(
-                            `|switch|p${p1.pNum}a: ${p1.curPokemon.name}|${p1.curPokemon.name}|100`
-                        );
-                        const otherPlayer = findOtherPlayer(p1, ctx.p1, ctx.p2);
-                        otherPlayer.curPokemon = nextMove.pokemon;
-                        otherPlayer.pokemon[nextMove.pokemon.name] =
-                            nextMove.pokemon;
-                        protocol.push(
-                            `|switch|p${otherPlayer.pNum}a: ${otherPlayer.curPokemon.name}|${otherPlayer.curPokemon.name}|100`
-                        );
+            const protocol = [];
+            if (!this.ctx.started) {
+                this.ctx.started = true;
+                protocol.push("|start");
+            }
+            // rename later
+            const p1 = parsePlayers(this.ctx, $1)[0];
+            // Some battles don't have switch in messages
+            // and just started the battle with a move
+            if (!p1.curPokemon) {
+                let nextMove: {
+                    player: Player;
+                    pokemon: Pokemon;
+                } | null = null!;
+                for (const { curLine } of curLog.next()!.read()) {
+                    const match = curLine
+                        .match(/(.+'s )?(.+) used .+!/)
+                        ?.slice(1);
+                    if (match) {
+                        const [$1, $2] = match;
+                        nextMove = {
+                            player: parsePlayers(this.ctx, $1)[0],
+                            pokemon: parsePokemon($2),
+                        };
+                        break;
                     }
-                    const { player, pokemon } = findPokemon(ctx, $2);
-                    const otherPlayer = findOtherPlayer(player, ctx.p1, ctx.p2);
-                    ctx.lastMoveBy = player;
-                    protocol.push(
-                        `|move|p${player.pNum}a: ${pokemon.name}|${$3}|p${
-                            otherPlayer.pNum
-                        }a: ${player.curPokemon!.name}`
-                    );
-                    if (missed) {
-                        protocol[0] += `|miss`;
-                        protocol.push(
-                            `|-miss|p${player.pNum}a: ${pokemon.name}`
-                        );
-                    }
-                    if (failed) {
-                        protocol.push(
-                            `|-fail|p${player.pNum}a: ${pokemon.name}|${$3}`
-                        );
-                    }
-                    if (CHARGE_MOVES.includes($3)) {
-                        protocol[0] += `|[from]lockedmove`;
-                    }
-                    if (SPECIAL_MOVES[$3]) {
-                        protocol.push(
-                            ...SPECIAL_MOVES[$3](ctx, player, otherPlayer)
-                        );
-                    }
-                    return protocol;
-                },
-            };
+                }
+                p1.curPokemon = parsePokemon($2);
+                p1.pokemon[p1.curPokemon.name] = p1.curPokemon;
+                protocol.push(
+                    `|switch|p${p1.pNum}a: ${p1.curPokemon.name}|${p1.curPokemon.name}|100`
+                );
+                const otherPlayer = findOtherPlayer(
+                    p1,
+                    this.ctx.p1,
+                    this.ctx.p2
+                );
+                otherPlayer.curPokemon = nextMove.pokemon;
+                otherPlayer.pokemon[nextMove.pokemon.name] = nextMove.pokemon;
+                protocol.push(
+                    `|switch|p${otherPlayer.pNum}a: ${otherPlayer.curPokemon.name}|${otherPlayer.curPokemon.name}|100`
+                );
+            }
+            const { player, pokemon } = findPokemon(this.ctx, $2);
+            const otherPlayer = findOtherPlayer(
+                player,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            this.ctx.lastMoveBy = player;
+            protocol.push(
+                `|move|p${player.pNum}a: ${pokemon.name}|${$3}|p${
+                    otherPlayer.pNum
+                }a: ${player.curPokemon!.name}`
+            );
+            const missed = !!curLog
+                .next()
+                ?.curLine.match(/The attack of(.+'s )? missed/);
+            const failed = !!curLog.next()?.curLine.match(/But it failed!/);
+            if (missed) {
+                protocol[0] += `|miss`;
+                protocol.push(`|-miss|p${player.pNum}a: ${pokemon.name}`);
+            }
+            if (failed) {
+                protocol.push(`|-fail|p${player.pNum}a: ${pokemon.name}|${$3}`);
+            }
+            if (CHARGE_MOVES.includes($3)) {
+                protocol[0] += `|[from]lockedmove`;
+            }
+            if (SPECIAL_MOVES[$3]) {
+                protocol.push(
+                    ...SPECIAL_MOVES[$3](this.ctx, player, otherPlayer)
+                );
+            }
+            return protocol;
         }
         match = line
             .match(/(.+) lost \d+ HP! \((\d+)% of its health\)/)
             ?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    let hp = pokemon.hp - parseInt($2);
-                    if (hp < 0) hp = 0;
-                    pokemon.hp = hp;
-                    return [
-                        `|-damage|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.hp
-                        }/100${pokemon.status ? " " + pokemon.status : ""}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            let hp = pokemon.hp - parseInt($2);
+            if (hp < 0) hp = 0;
+            pokemon.hp = hp;
+            return [
+                `|-damage|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100${
+                    pokemon.status ? " " + pokemon.status : ""
+                }`,
+            ];
         }
         match = line
             .match(/(?:.+'s )?(.+) lost (\d+)% of its health!/)
             ?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    let hp = pokemon.hp - parseInt($2);
-                    if (hp < 0) hp = 0;
-                    pokemon.hp = hp;
-                    return [
-                        `|-damage|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.hp
-                        }/100${pokemon.status ? " " + pokemon.status : ""}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            let hp = pokemon.hp - parseInt($2);
+            if (hp < 0) hp = 0;
+            pokemon.hp = hp;
+            return [
+                `|-damage|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100${
+                    pokemon.status ? " " + pokemon.status : ""
+                }`,
+            ];
         }
         match = line.match(/(?:.+'s )?(.+) regained health!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    let hp = pokemon.hp + 50;
-                    if (hp > 100) hp = 100;
-                    pokemon.hp = hp;
-                    return [
-                        `|-heal|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.hp
-                        }/100${pokemon.status ? " " + pokemon.status : ""}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            let hp = pokemon.hp + 50;
+            if (hp > 100) hp = 100;
+            pokemon.hp = hp;
+            return [
+                `|-heal|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100${
+                    pokemon.status ? " " + pokemon.status : ""
+                }`,
+            ];
         }
         match = line.match(/(?:.+'s )?(.+) fainted!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [`|faint|p${player.pNum}a: ${pokemon.name}`];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [`|faint|p${player.pNum}a: ${pokemon.name}`];
         }
         if (line === "It's super effective!") {
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = findOtherPlayer(
-                        ctx.lastMoveBy,
-                        ctx.p1,
-                        ctx.p2
-                    );
-                    return [
-                        `|-supereffective|p${player.pNum}a: ${
-                            player.curPokemon!.name
-                        }`,
-                    ];
-                },
-            };
+            const player = findOtherPlayer(
+                this.ctx.lastMoveBy!,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            return [
+                `|-supereffective|p${player.pNum}a: ${player.curPokemon!.name}`,
+            ];
         }
         if (line === "It's not very effective...") {
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = findOtherPlayer(
-                        ctx.lastMoveBy,
-                        ctx.p1,
-                        ctx.p2
-                    );
-                    return [
-                        `|-resisted|p${player.pNum}a: ${
-                            player.curPokemon!.name
-                        }`,
-                    ];
-                },
-            };
+            const player = findOtherPlayer(
+                this.ctx.lastMoveBy!,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            return [`|-resisted|p${player.pNum}a: ${player.curPokemon!.name}`];
         }
         if (line === "A critical hit!") {
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = findOtherPlayer(
-                        ctx.lastMoveBy,
-                        ctx.p1,
-                        ctx.p2
-                    );
-                    return [
-                        `|-crit|p${player.pNum}a: ${player.curPokemon!.name}`,
-                    ];
-                },
-            };
+            const player = findOtherPlayer(
+                this.ctx.lastMoveBy!,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            return [`|-crit|p${player.pNum}a: ${player.curPokemon!.name}`];
         }
         match = line.match(/It had no effect on .+!/)?.slice(1);
         if (match) {
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = findOtherPlayer(
-                        ctx.lastMoveBy,
-                        ctx.p1,
-                        ctx.p2
-                    );
-                    return [
-                        `|-immune|p${player.pNum}a: ${player.curPokemon!.name}`,
-                    ];
-                },
-            };
+            const player = findOtherPlayer(
+                this.ctx.lastMoveBy!,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            return [`|-immune|p${player.pNum}a: ${player.curPokemon!.name}`];
         }
         match = line
             .match(/(?:.+'s )?(.+) is paralyzed! It may be unable to move!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    pokemon.status = "par";
-                    return [`|-status|p${player.pNum}a: ${pokemon.name}|par`];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            pokemon.status = "par";
+            return [`|-status|p${player.pNum}a: ${pokemon.name}|par`];
         }
         match = line
             .match(/(?:.+'s )?(.+) is paralyzed! It can't move!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [`|cant|p${player.pNum}a: ${pokemon.name}`];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [`|cant|p${player.pNum}a: ${pokemon.name}`];
         }
         match = line.match(/(?:.+'s )?(.+) fell asleep!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    pokemon.status = "slp";
-                    return [`|-status|p${player.pNum}a: ${pokemon.name}|slp`];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            pokemon.status = "slp";
+            return [`|-status|p${player.pNum}a: ${pokemon.name}|slp`];
         }
         match = line.match(/(?:.+'s )?(.+) is fast asleep!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [`|cant|p${player.pNum}a: ${pokemon.name}`];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [`|cant|p${player.pNum}a: ${pokemon.name}`];
         }
         match = line.match(/(?:.+'s )?(.+) was (badly )?poisoned!/)?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    pokemon.status = $2 ? "psn" : "tox";
-                    if (pokemon.status === "tox") {
-                        pokemon.toxicTurns = 1;
-                    }
-                    return [`|-status|p${player.pNum}a: ${pokemon.name}|psn`];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            pokemon.status = $2 ? "psn" : "tox";
+            if (pokemon.status === "tox") {
+                pokemon.toxicTurns = 1;
+            }
+            return [`|-status|p${player.pNum}a: ${pokemon.name}|psn`];
         }
         match = line.match(/(?:.+'s )?(.+) was hurt by poison!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    let dmg;
-                    if (pokemon.status === "tox") {
-                        dmg = 6 * pokemon.toxicTurns!++;
-                    } else {
-                        dmg = ctx.gen === 1 ? 6 : 12;
-                    }
-                    pokemon.hp -= dmg;
-                    return [
-                        `|-damage|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100 tox|[from] ${pokemon.status}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            let dmg;
+            if (pokemon.status === "tox") {
+                dmg = 6 * pokemon.toxicTurns!++;
+            } else {
+                dmg = this.ctx.gen === 1 ? 6 : 12;
+            }
+            pokemon.hp -= dmg;
+            return [
+                `|-damage|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100 tox|[from] ${pokemon.status}`,
+            ];
         }
         match = line.match(/(?:.+'s )?(.+) woke up!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    pokemon.status = undefined;
-                    return [
-                        `|-curestatus|p${player.pNum}a: ${pokemon.name}|slp`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            pokemon.status = undefined;
+            return [`|-curestatus|p${player.pNum}a: ${pokemon.name}|slp`];
         }
         match = line
             .match(/(?:.+'s )?(.+) restored a little HP using its Leftovers!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    let hp = pokemon.hp + 6;
-                    if (hp > 100) hp = 100;
-                    pokemon.hp = hp;
-                    return [
-                        `|-heal|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.hp
-                        }/100${
-                            pokemon.status ? " " + pokemon.status : ""
-                        }|[from] item: Leftovers`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            let hp = pokemon.hp + 6;
+            if (hp > 100) hp = 100;
+            pokemon.hp = hp;
+            return [
+                `|-heal|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100${
+                    pokemon.status ? " " + pokemon.status : ""
+                }|[from] item: Leftovers`,
+            ];
         }
         match = line
             .match(/(?:.+'s )?(.+)'s perish count fell to (\d)!/)
             ?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    if ($2 === "3") return [];
-                    return [
-                        `|-start|p${player.pNum}a: ${pokemon.name}|perish${$2}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            if ($2 === "3") return [];
+            return [`|-start|p${player.pNum}a: ${pokemon.name}|perish${$2}`];
         }
         match = line.match(/(.+'s )?(.+) was dragged out!/)?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const pokemon = parsePokemon($2);
-                    const [player] = parsePlayers(ctx, $1);
-                    if (!player.pokemon[pokemon.name]) {
-                        player.pokemon[pokemon.name] = pokemon;
-                    }
-                    player.curPokemon = pokemon;
-                    if (player.curPokemon.toxicTurns && ctx.gen > 2) {
-                        player.curPokemon.toxicTurns = 1;
-                    }
-                    return [
-                        `|drag|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.specie
-                        }|${pokemon.hp}/100${
-                            pokemon.status ? " " + pokemon.status : ""
-                        }`,
-                    ];
-                },
-            };
+            const pokemon = parsePokemon($2);
+            const [player] = parsePlayers(this.ctx, $1);
+            if (!player.pokemon[pokemon.name]) {
+                player.pokemon[pokemon.name] = pokemon;
+            }
+            player.curPokemon = pokemon;
+            if (player.curPokemon.toxicTurns && this.ctx.gen! > 2) {
+                player.curPokemon.toxicTurns = 1;
+            }
+            return [
+                `|drag|p${player.pNum}a: ${pokemon.name}|${pokemon.specie}|${
+                    pokemon.hp
+                }/100${pokemon.status ? " " + pokemon.status : ""}`,
+            ];
         }
         match = line.match(/(?:.+'s )?(.+) sprang up!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    const otherPlayer = findOtherPlayer(player, ctx.p1, ctx.p2);
-                    return [
-                        `|move|p${player.pNum}a: ${pokemon.name}|Bounce|[still]`,
-                        `|-prepare|p${player.pNum}a: ${pokemon.name}|Bounce|p${
-                            otherPlayer.pNum
-                        }a: ${otherPlayer.curPokemon!.name}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            const otherPlayer = findOtherPlayer(
+                player,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            return [
+                `|move|p${player.pNum}a: ${pokemon.name}|Bounce|[still]`,
+                `|-prepare|p${player.pNum}a: ${pokemon.name}|Bounce|p${
+                    otherPlayer.pNum
+                }a: ${otherPlayer.curPokemon!.name}`,
+            ];
         }
         match = line.match(/(?:.+'s )?(.+) fell for the taunt!/)?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [
-                        `|-start|p${player.pNum}a: ${pokemon.name}|move: Taunt`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [`|-start|p${player.pNum}a: ${pokemon.name}|move: Taunt`];
         }
         match = line
             .match(/(?:.+'s )?(.+) can't use (.+) after the taunt!/)
             ?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [
-                        `|cant|p${player.pNum}a: ${pokemon.name}|move: Taunt|${$2}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [
+                `|cant|p${player.pNum}a: ${pokemon.name}|move: Taunt|${$2}`,
+            ];
         }
         match = line
             .match(/Spikes were scattered all around the feet of (.+)'s team!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = parsePlayers(ctx, $1)[0];
-                    return [
-                        `|-sidestart|p${player.pNum}: ${player.name}|Spikes`,
-                    ];
-                },
-            };
+            const player = parsePlayers(this.ctx, $1)[0];
+            return [`|-sidestart|p${player.pNum}: ${player.name}|Spikes`];
         }
         match = line
             .match(/Pointed stones float in the air around (.+) team!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = parsePlayers(ctx, $1)[0];
-                    return [
-                        `|-sidestart|p${player.pNum}: ${player.name}|Stealth Rock`,
-                    ];
-                },
-            };
+            const player = parsePlayers(this.ctx, $1)[0];
+            return [`|-sidestart|p${player.pNum}: ${player.name}|Stealth Rock`];
         }
         match = line
             .match(
@@ -906,29 +708,21 @@ export const PO: Converter<Context> = {
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const player = parsePlayers(ctx, $1)[0];
-                    return [
-                        `|-sidestart|p${player.pNum}: ${player.name}|Toxic Spikes`,
-                    ];
-                },
-            };
+            const player = parsePlayers(this.ctx, $1)[0];
+            return [`|-sidestart|p${player.pNum}: ${player.name}|Toxic Spikes`];
         }
         match = line.match(/(?:.+'s )?(.+) blew away (.+)!/)?.slice(1);
         if (match) {
             const [$1, $2] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player } = findPokemon(ctx, $1);
-                    const otherPlayer = findOtherPlayer(player, ctx.p1, ctx.p2);
-                    return [
-                        `|-sideend|p${otherPlayer.pNum}: ${otherPlayer.name}|${$2}`,
-                    ];
-                },
-            };
+            const { player } = findPokemon(this.ctx, $1);
+            const otherPlayer = findOtherPlayer(
+                player,
+                this.ctx.p1,
+                this.ctx.p2
+            );
+            return [
+                `|-sideend|p${otherPlayer.pNum}: ${otherPlayer.name}|${$2}`,
+            ];
         }
         match = line
             .match(
@@ -937,63 +731,41 @@ export const PO: Converter<Context> = {
             ?.slice(1);
         if (match) {
             const [$1, $2, $3, $4] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [
-                        `|-${$4 === "fell" ? "un" : ""}boost|p${
-                            player.pNum
-                        }a: ${pokemon.name}|${convertStat($2)}|${
-                            $3 ? "2" : "1"
-                        }`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [
+                `|-${$4 === "fell" ? "un" : ""}boost|p${player.pNum}a: ${
+                    pokemon.name
+                }|${convertStat($2)}|${$3 ? "2" : "1"}`,
+            ];
         }
         match = line
             .match(/(?:.+'s )?(.+)'s Sand Stream whipped up a sandstorm!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    return [
-                        `|-weather|Sandstorm|[from] ability: Sand Stream|[of] p${player.pNum}a: ${pokemon.name}`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            return [
+                `|-weather|Sandstorm|[from] ability: Sand Stream|[of] p${player.pNum}a: ${pokemon.name}`,
+            ];
         }
         if (line === "The sandstorm rages.") {
-            return {
-                params: [],
-                fn: () => ["|-weather|Sandstorm|[upkeep]"],
-            };
+            return ["|-weather|Sandstorm|[upkeep]"];
         }
         match = line
             .match(/(?:.+'s )?(.+) is buffeted by the sandstorm!/)
             ?.slice(1);
         if (match) {
             const [$1] = match;
-            return {
-                params: ["context"],
-                fn: (ctx: Context) => {
-                    const { player, pokemon } = findPokemon(ctx, $1);
-                    let hp = pokemon.hp - 6;
-                    if (hp < 0) hp = 0;
-                    pokemon.hp = hp;
-                    return [
-                        `|-damage|p${player.pNum}a: ${pokemon.name}|${
-                            pokemon.hp
-                        }/100${
-                            pokemon.status ? " " + pokemon.status : ""
-                        }|[from] Sandstorm`,
-                    ];
-                },
-            };
+            const { player, pokemon } = findPokemon(this.ctx, $1);
+            let hp = pokemon.hp - 6;
+            if (hp < 0) hp = 0;
+            pokemon.hp = hp;
+            return [
+                `|-damage|p${player.pNum}a: ${pokemon.name}|${pokemon.hp}/100${
+                    pokemon.status ? " " + pokemon.status : ""
+                }|[from] Sandstorm`,
+            ];
         }
-        return noop;
-    },
-};
+        return [];
+    }
+}
